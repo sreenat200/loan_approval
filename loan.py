@@ -28,8 +28,8 @@ st.markdown("""
     .stButton>button {background-color: #4CAF50; color: white; border-radius: 5px;}
     .stSelectbox, .stSlider, .stNumberInput, .stTextInput {background-color: black; padding: 10px; border-radius: 5px;}
     .stTabs {background-color: black; padding: 10px; border-radius: 5px;}
-    h1 {color: #2c3e50;}
-    h2, h3 {color: #34495e;}
+    h1 {color: #ffffff;}
+    h2, h3 {color: #ffffff;}
     .stMetric {background-color: black; border-radius: 5px; padding: 10px;}
     </style>
 """, unsafe_allow_html=True)
