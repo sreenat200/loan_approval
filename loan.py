@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, roc_curve, auc
@@ -28,8 +28,7 @@ st.markdown("""
     .stButton>button {background-color: #4CAF50; color: white; border-radius: 5px;}
     .stSelectbox, .stSlider, .stNumberInput, .stTextInput {background-color: black; padding: 10px; border-radius: 5px;}
     .stTabs {background-color: black; padding: 10px; border-radius: 5px;}
-    h1 {color: #ffffff;}
-    h2, h3 {color: #ffffff;}
+    h1, h2, h3 {color: #ffffff;}
     .stMetric {background-color: black; border-radius: 5px; padding: 10px;}
     </style>
 """, unsafe_allow_html=True)
@@ -43,7 +42,6 @@ def load_data():
         return data
     except Exception as e:
         st.error(f"Error loading file from GitHub: {e}")
-        st.write("Please upload a local loan_data.csv file as a fallback.")
         uploaded_file = st.file_uploader("Upload loan_data.csv", type=["csv"])
         if uploaded_file:
             try:
@@ -57,14 +55,32 @@ def load_data():
 def preprocess_data(data):
     if data is None:
         return None, None, None, None
-    # All features by default
-    selected_features = ['person_age', 'person_income', 'person_emp_exp', 'loan_amnt', 
-                        'loan_int_rate', 'loan_percent_income', 'cb_person_cred_hist_length', 'credit_score']
-    categorical_cols = ['person_gender', 'person_education', 'person_home_ownership', 
-                        'loan_intent', 'previous_loan_defaults_on_file']
-    data_encoded = pd.get_dummies(data, columns=[col for col in categorical_cols if col in data.columns], drop_first=True)
     
-    # Select features (numeric + encoded categorical)
+    # Define features
+    numeric_features = ['person_age', 'person_income', 'person_emp_exp', 'loan_amnt', 
+                        'loan_int_rate', 'loan_percent_income', 'cb_person_cred_hist_length', 'credit_score']
+    categorical_cols = ['previous_loan_defaults_on_file']
+    
+    # Verify numeric features
+    for feature in numeric_features:
+        if feature in data.columns and not np.issubdtype(data[feature].dtype, np.number):
+            st.error(f"Feature {feature} contains non-numeric values.")
+            return None, None, None, None
+    
+    # Convert previous_loan_defaults_on_file to binary for backend
+    data = data.copy()
+    data['previous_loan_defaults_on_file'] = data['previous_loan_defaults_on_file'].map({'Yes': 1, 'No': 0})
+    
+    # Verify encoding
+    if data['previous_loan_defaults_on_file'].isnull().any():
+        st.error("Null values found in previous_loan_defaults_on_file after encoding.")
+        return None, None, None, None
+    
+    # Select features
+    selected_features = numeric_features + categorical_cols
+    data_encoded = data[selected_features + ['loan_status']].copy()
+    
+    # Select features
     available_features = [col for col in data_encoded.columns if col != 'loan_status']
     X = data_encoded[available_features]
     y = data['loan_status']
@@ -82,17 +98,15 @@ def preprocess_data(data):
 @st.cache_resource
 def train_model(X, y, algorithm):
     if X is None or y is None:
-        return None, None, None, None, None
+        return None, None, None, None, None, None, None, None
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
     if algorithm == "Random Forest":
-        model = RandomForestClassifier(n_estimators=100, random_state=42)
+        model = RandomForestClassifier(n_estimators=100, random_state=42, class_weight={0: 1, 1: 2})
     elif algorithm == "Logistic Regression":
-        model = LogisticRegression(random_state=42)
-    elif algorithm == "Gradient Boosting":
-        model = GradientBoostingClassifier(n_estimators=100, random_state=42)
+        model = LogisticRegression(random_state=42, class_weight={0: 1, 1: 2})
     elif algorithm == "XGBoost":
-        model = xgb.XGBClassifier(n_estimators=100, random_state=42, use_label_encoder=False, eval_metric='logloss')
+        model = xgb.XGBClassifier(n_estimators=100, random_state=42, scale_pos_weight=2, use_label_encoder=False, eval_metric='logloss')
     
     model.fit(X_train, y_train)
     
@@ -102,36 +116,25 @@ def train_model(X, y, algorithm):
     recall = recall_score(y_test, y_pred)
     f1 = f1_score(y_test, y_pred)
     
-    if algorithm in ["Random Forest", "Gradient Boosting", "XGBoost"]:
+    if algorithm in ["Random Forest", "XGBoost"]:
         feature_importance = model.feature_importances_
     else:
         feature_importance = np.abs(model.coef_[0]) / np.abs(model.coef_[0]).sum()
     
     return model, accuracy, precision, recall, f1, feature_importance, X_test, y_test, y_pred
 
-# Generate stylish PDF report with premium look and border
+# Generate stylish PDF report
 def generate_pdf_report(input_data, prediction, probability, accuracy, precision, recall, f1, feature_importance, features, algorithm, customer_name="", customer_phone=""):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=0.5*inch, leftMargin=0.5*inch, topMargin=0.5*inch, bottomMargin=0.5*inch)
     styles = getSampleStyleSheet()
     
-    # Custom styles for premium look
-    title_style = ParagraphStyle(
-        name='TitleStyle', parent=styles['Title'], fontName='Helvetica-Bold', fontSize=16, textColor=colors.navy,
-        spaceAfter=20, alignment=1
-    )
-    heading_style = ParagraphStyle(
-        name='HeadingStyle', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=12, textColor=colors.darkblue,
-        spaceBefore=10, spaceAfter=10
-    )
-    normal_style = ParagraphStyle(
-        name='NormalStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=10, textColor=colors.black,
-        spaceAfter=8
-    )
+    title_style = ParagraphStyle(name='TitleStyle', parent=styles['Title'], fontName='Helvetica-Bold', fontSize=16, textColor=colors.navy, spaceAfter=20, alignment=1)
+    heading_style = ParagraphStyle(name='HeadingStyle', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=12, textColor=colors.darkblue, spaceBefore=10, spaceAfter=10)
+    normal_style = ParagraphStyle(name='NormalStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=10, textColor=colors.black, spaceAfter=8)
     
     elements = []
     
-    # Add border to the page
     def add_page_border(canvas, doc):
         canvas.saveState()
         canvas.setStrokeColor(colors.darkblue)
@@ -141,11 +144,9 @@ def generate_pdf_report(input_data, prediction, probability, accuracy, precision
     
     doc.addPageTemplates([PageTemplate(id='Bordered', frames=[Frame(doc.leftMargin, doc.bottomMargin, doc.width, doc.height)], onPage=add_page_border)])
     
-    # Header
     elements.append(Paragraph(f"Loan Approval Prediction Report ({algorithm})", title_style))
     elements.append(Spacer(1, 0.2*inch))
     
-    # Customer Info
     if customer_name or customer_phone:
         elements.append(Paragraph("Customer Information", heading_style))
         customer_data = [["Field", "Value"]]
@@ -168,11 +169,11 @@ def generate_pdf_report(input_data, prediction, probability, accuracy, precision
         elements.append(customer_table)
         elements.append(Spacer(1, 0.2*inch))
     
-    # Input Features
     elements.append(Paragraph("Input Features", heading_style))
     data = [["Feature", "Value"]]
     for feature, value in input_data.items():
-        data.append([feature.replace('_', ' ').title(), f"{value:.2f}" if isinstance(value, (int, float)) else str(value)])
+        display_value = value if isinstance(value, str) else f"{value:.2f}"
+        data.append([feature.replace('_', ' ').title(), display_value])
     table = Table(data, colWidths=[2*inch, 4*inch])
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.navy),
@@ -188,12 +189,10 @@ def generate_pdf_report(input_data, prediction, probability, accuracy, precision
     elements.append(table)
     elements.append(Spacer(1, 0.2*inch))
     
-    # Prediction
     elements.append(Paragraph(f"Prediction: {'Rejected' if prediction == 1 else 'Approved'}", heading_style))
     elements.append(Paragraph(f"Probability of Rejection: {probability:.2%}", normal_style))
     elements.append(Spacer(1, 0.2*inch))
     
-    # Model Performance
     elements.append(Paragraph("Model Performance", heading_style))
     elements.append(Paragraph(f"Algorithm: {algorithm}", normal_style))
     elements.append(Paragraph(f"Accuracy: {accuracy:.4f}", normal_style))
@@ -202,7 +201,6 @@ def generate_pdf_report(input_data, prediction, probability, accuracy, precision
     elements.append(Paragraph(f"F1-Score: {f1:.4f}", normal_style))
     elements.append(Spacer(1, 0.2*inch))
     
-    # Feature Importance
     elements.append(Paragraph("Feature Importance", heading_style))
     importance_data = [["Feature", "Importance"]]
     for feature, importance in zip(features, feature_importance):
@@ -239,19 +237,14 @@ def main():
     st.sidebar.header("📝 Input Details")
     customer_name = st.sidebar.text_input("Customer Name (Optional)", key="customer_name")
     customer_phone = st.sidebar.text_input("Phone Number (Optional)", key="customer_phone")
-    algorithm = st.sidebar.selectbox("Select Algorithm", ["Random Forest", "Logistic Regression", "Gradient Boosting", "XGBoost"])
+    algorithm = st.sidebar.selectbox("Select Algorithm", ["Random Forest", "Logistic Regression", "XGBoost"])
     
     input_data = {}
     numeric_features = ['person_age', 'person_income', 'person_emp_exp', 'loan_amnt', 
                         'loan_int_rate', 'loan_percent_income', 'cb_person_cred_hist_length', 'credit_score']
-    categorical_features = {
-        'person_gender': ['male', 'female'],
-        'person_education': ['High School', 'Associate', 'Bachelor', 'Master', 'Doctorate'],
-        'person_home_ownership': ['RENT', 'OWN', 'MORTGAGE', 'OTHER'],
-        'loan_intent': ['PERSONAL', 'EDUCATION', 'MEDICAL', 'VENTURE', 'HOMEIMPROVEMENT', 'DEBTCONSOLIDATION'],
-        'previous_loan_defaults_on_file': ['Yes', 'No']
-    }
+    categorical_features = {'previous_loan_defaults_on_file': ['Yes', 'No']}
     
+    # Collect numeric inputs
     for feature in numeric_features:
         try:
             if feature in ['person_age', 'person_emp_exp', 'cb_person_cred_hist_length']:
@@ -275,11 +268,12 @@ def main():
             st.error(f"Error processing {feature}: {e}. Please check the dataset for non-numeric values.")
             return
     
+    # Collect categorical input
     for feature, options in categorical_features.items():
         input_data[feature] = st.sidebar.selectbox(
             feature.replace('_', ' ').title(),
             options=options,
-            index=options.index(data[feature].mode()[0]),
+            index=options.index(data[feature].mode()[0]) if data[feature].mode()[0] in options else 0,
             key=f"{feature}_input"
         )
 
@@ -289,7 +283,7 @@ def main():
     with tab1:
         st.header("Live Prediction")
         st.write("Enter borrower details to predict loan approval status.")
-        # Train model with all features
+        # Train model
         X, y, scaler, feature_names = preprocess_data(data)
         if X is None:
             return
@@ -297,19 +291,27 @@ def main():
         if model is None:
             return
         
-        # Live prediction based on sidebar inputs
+        # Live prediction
         input_df = pd.DataFrame([input_data])
-        input_encoded = pd.get_dummies(input_df, columns=categorical_features.keys(), drop_first=True)
-        input_encoded = input_encoded.reindex(columns=feature_names, fill_value=0)
+        input_df['previous_loan_defaults_on_file'] = input_df['previous_loan_defaults_on_file'].map({'Yes': 1, 'No': 0})
+        input_encoded = input_df[feature_names]
         input_scaled = scaler.transform(input_encoded)
         prediction = model.predict(input_scaled)[0]
         probability = model.predict_proba(input_scaled)[0][1]
+        
+        # Add 30% to rejection probability for previous_loan_defaults_on_file=Yes
+        if input_data['previous_loan_defaults_on_file'] == 'Yes':
+            probability = min(probability + 0.3, 0.99)  # Add 30%, cap at 99%
+            prediction = 1  # Force rejection
 
         st.success(f"### Prediction: **{'Rejected' if prediction == 1 else 'Approved'}**")
         st.write(f"Probability of Rejection: **{probability:.2%}**")
 
+        # Prepare input for PDF (use original categorical names)
+        pdf_input_data = input_data.copy()
+
         pdf_buffer = generate_pdf_report(
-            input_data,
+            pdf_input_data,
             prediction,
             probability,
             accuracy,
@@ -353,7 +355,7 @@ def main():
             st.subheader("Select Features for Scatter Plot")
             x_feature = st.selectbox("X-axis Feature", options=numeric_features, key="x_feature")
             y_feature = st.selectbox("Y-axis Feature", options=numeric_features, key="y_feature")
-            color_feature = st.selectbox("Color by", options=['loan_status'] + numeric_features, key="color_feature")
+            color_feature = st.selectbox("Color by", options=['loan_status', 'previous_loan_defaults_on_file'] + numeric_features, key="color_feature")
             size_feature = st.selectbox("Size by", options=["None"] + numeric_features, key="size_feature")
         
         if graph_type == "Confusion Matrix":
@@ -400,8 +402,11 @@ def main():
 
         elif graph_type == "Scatter Plot":
             st.subheader(f"{x_feature.replace('_', ' ').title()} vs {y_feature.replace('_', ' ').title()}")
+            plot_data = data.copy()
+            if color_feature == 'previous_loan_defaults_on_file':
+                plot_data['previous_loan_defaults_on_file'] = plot_data['previous_loan_defaults_on_file'].map({1: 'Yes', 0: 'No'})
             fig_scatter = px.scatter(
-                data,
+                plot_data,
                 x=x_feature,
                 y=y_feature,
                 color=color_feature,
