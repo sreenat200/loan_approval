@@ -59,7 +59,8 @@ def preprocess_data(data):
     # Define features
     numeric_features = ['person_age', 'person_income', 'person_emp_exp', 'loan_amnt', 
                         'loan_int_rate', 'loan_percent_income', 'cb_person_cred_hist_length', 'credit_score']
-    categorical_cols = ['previous_loan_defaults_on_file']
+    categorical_cols = ['person_gender', 'person_education', 'person_home_ownership', 
+                        'loan_intent', 'previous_loan_defaults_on_file']
     
     # Verify numeric features
     for feature in numeric_features:
@@ -76,9 +77,8 @@ def preprocess_data(data):
         st.error("Null values found in previous_loan_defaults_on_file after encoding.")
         return None, None, None, None
     
-    # Select features
-    selected_features = numeric_features + categorical_cols
-    data_encoded = data[selected_features + ['loan_status']].copy()
+    # One-hot encode categorical columns
+    data_encoded = pd.get_dummies(data, columns=[col for col in categorical_cols if col in data.columns], drop_first=True)
     
     # Select features
     available_features = [col for col in data_encoded.columns if col != 'loan_status']
@@ -242,7 +242,13 @@ def main():
     input_data = {}
     numeric_features = ['person_age', 'person_income', 'person_emp_exp', 'loan_amnt', 
                         'loan_int_rate', 'loan_percent_income', 'cb_person_cred_hist_length', 'credit_score']
-    categorical_features = {'previous_loan_defaults_on_file': ['Yes', 'No']}
+    categorical_features = {
+        'person_gender': ['male', 'female'],
+        'person_education': ['High School', 'Associate', 'Bachelor', 'Master', 'Doctorate'],
+        'person_home_ownership': ['RENT', 'OWN', 'MORTGAGE', 'OTHER'],
+        'loan_intent': ['PERSONAL', 'EDUCATION', 'MEDICAL', 'VENTURE', 'HOMEIMPROVEMENT', 'DEBTCONSOLIDATION'],
+        'previous_loan_defaults_on_file': ['Yes', 'No']
+    }
     
     # Collect numeric inputs
     for feature in numeric_features:
@@ -268,7 +274,7 @@ def main():
             st.error(f"Error processing {feature}: {e}. Please check the dataset for non-numeric values.")
             return
     
-    # Collect categorical input
+    # Collect categorical inputs
     for feature, options in categorical_features.items():
         input_data[feature] = st.sidebar.selectbox(
             feature.replace('_', ' ').title(),
@@ -293,8 +299,8 @@ def main():
         
         # Live prediction
         input_df = pd.DataFrame([input_data])
-        input_df['previous_loan_defaults_on_file'] = input_df['previous_loan_defaults_on_file'].map({'Yes': 1, 'No': 0})
-        input_encoded = input_df[feature_names]
+        input_encoded = pd.get_dummies(input_df, columns=categorical_features.keys(), drop_first=True)
+        input_encoded = input_encoded.reindex(columns=feature_names, fill_value=0)
         input_scaled = scaler.transform(input_encoded)
         prediction = model.predict(input_scaled)[0]
         probability = model.predict_proba(input_scaled)[0][1]
@@ -355,7 +361,7 @@ def main():
             st.subheader("Select Features for Scatter Plot")
             x_feature = st.selectbox("X-axis Feature", options=numeric_features, key="x_feature")
             y_feature = st.selectbox("Y-axis Feature", options=numeric_features, key="y_feature")
-            color_feature = st.selectbox("Color by", options=['loan_status', 'previous_loan_defaults_on_file'] + numeric_features, key="color_feature")
+            color_feature = st.selectbox("Color by", options=['loan_status'] + numeric_features + list(categorical_features.keys()), key="color_feature")
             size_feature = st.selectbox("Size by", options=["None"] + numeric_features, key="size_feature")
         
         if graph_type == "Confusion Matrix":
@@ -403,8 +409,6 @@ def main():
         elif graph_type == "Scatter Plot":
             st.subheader(f"{x_feature.replace('_', ' ').title()} vs {y_feature.replace('_', ' ').title()}")
             plot_data = data.copy()
-            if color_feature == 'previous_loan_defaults_on_file':
-                plot_data['previous_loan_defaults_on_file'] = plot_data['previous_loan_defaults_on_file'].map({1: 'Yes', 0: 'No'})
             fig_scatter = px.scatter(
                 plot_data,
                 x=x_feature,
