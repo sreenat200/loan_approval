@@ -56,7 +56,7 @@ def preprocess_data(data):
     if data is None:
         return None, None, None, None
     
-    # Define features
+    # Define features to include
     numeric_features = ['person_age', 'person_income', 'person_emp_exp', 'loan_amnt', 
                         'loan_int_rate', 'loan_percent_income', 'cb_person_cred_hist_length', 'credit_score']
     categorical_cols = ['previous_loan_defaults_on_file']
@@ -76,18 +76,25 @@ def preprocess_data(data):
         st.error("Null values found in previous_loan_defaults_on_file after encoding.")
         return None, None, None, None
     
-    # One-hot encode categorical columns
-    data_encoded = pd.get_dummies(data, columns=[col for col in categorical_cols if col in data.columns], drop_first=True)
+    # Select only the desired features
+    selected_features = numeric_features + ['previous_loan_defaults_on_file']
+    # Ensure all selected features exist in the dataset
+    available_features = [col for col in selected_features if col in data.columns]
     
-    # Select features
-    available_features = [col for col in data_encoded.columns if col != 'loan_status']
-    X = data_encoded[available_features]
+    # Check if any selected features are missing
+    missing_features = [col for col in selected_features if col not in data.columns]
+    if missing_features:
+        st.warning(f"The following features are missing in the dataset: {missing_features}")
+    
+    # Create X with only selected features
+    X = data[available_features]
     y = data['loan_status']
     
     # Handle missing values
     X = X.fillna(X.median())
     y = y.fillna(y.mode()[0])
     
+    # Apply scaling to numeric features only
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     
