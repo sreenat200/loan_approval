@@ -59,8 +59,7 @@ def preprocess_data(data):
     # Define features
     numeric_features = ['person_age', 'person_income', 'person_emp_exp', 'loan_amnt', 
                         'loan_int_rate', 'loan_percent_income', 'cb_person_cred_hist_length', 'credit_score']
-    categorical_cols = ['person_gender', 'person_education', 'person_home_ownership', 
-                        'loan_intent', 'previous_loan_defaults_on_file']
+    categorical_cols = ['previous_loan_defaults_on_file']
     
     # Verify numeric features
     for feature in numeric_features:
@@ -243,10 +242,6 @@ def main():
     numeric_features = ['person_age', 'person_income', 'person_emp_exp', 'loan_amnt', 
                         'loan_int_rate', 'loan_percent_income', 'cb_person_cred_hist_length', 'credit_score']
     categorical_features = {
-        'person_gender': ['male', 'female'],
-        'person_education': ['High School', 'Associate', 'Bachelor', 'Master', 'Doctorate'],
-        'person_home_ownership': ['RENT', 'OWN', 'MORTGAGE', 'OTHER'],
-        'loan_intent': ['PERSONAL', 'EDUCATION', 'MEDICAL', 'VENTURE', 'HOMEIMPROVEMENT', 'DEBTCONSOLIDATION'],
         'previous_loan_defaults_on_file': ['Yes', 'No']
     }
     
